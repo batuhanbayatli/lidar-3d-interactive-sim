@@ -104,6 +104,7 @@ Doğrudan kurulumsuz denemek için:
 
 <div align="center">
   <b>BATUHAN BAYATLI</b><br/>
+  
   <a href="https://www.linkedin.com/in/batuhanbayatlı" target="_blank">
     <img src="https://img.shields.io/badge/LinkedIn-Bağlantı_Kur-0A66C2?style=for-the-badge&logo=linkedin&logoColor=white"/>
   </a>
