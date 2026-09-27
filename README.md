@@ -88,7 +88,7 @@ $$\Delta t = \frac{2 \times d}{c}$$
 Proje herhangi bir derleme adımı (build step) veya paket yöneticisi gerektirmez:
 
 1. Depoyu klonlayın:
-   git clone https://github.com/BatuhanBayatli/lidar-3d-interactive-sim.git
+   git clone https://github.com/batuhanbayatli/lidar-3d-interactive-sim.git
 
 2. Klasöre gidin:
    cd lidar-3d-interactive-sim
