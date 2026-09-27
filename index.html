@@ -1,0 +1,1424 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LiDAR 3D Sanal Simülatörü | Batuhan Bayatlı</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f0f9ff',
+                            100: '#e0f2fe',
+                            500: '#0284c7',
+                            600: '#0369a1',
+                            700: '#075985',
+                            800: '#0c4a6e',
+                            900: '#082f49',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Google Fonts & Font Awesome -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Three.js ve Resmi Eklentiler -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/TransformControls.js"></script>
+
+    <style>
+        * {
+            box-sizing: border-box;
+            user-select: none;
+        }
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            font-family: 'Inter', sans-serif;
+            background-color: #f8fafc;
+            color: #0f172a;
+        }
+        .font-mono-code {
+            font-family: 'JetBrains Mono', monospace;
+        }
+        /* Açık Renkli Temiz Dashboard Stili */
+        .light-panel {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(14px);
+            -webkit-backdrop-filter: blur(14px);
+            border: 1px solid rgba(226, 232, 240, 0.95);
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.08), 0 4px 6px -2px rgba(0, 0, 0, 0.03);
+        }
+        .light-subcard {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+        }
+        input[type=range] {
+            accent-color: #0284c7;
+        }
+        ::-webkit-scrollbar {
+            width: 5px;
+            height: 5px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+        .tooltip-box {
+            visibility: hidden;
+            opacity: 0;
+            transition: opacity 0.2s ease, visibility 0.2s ease;
+        }
+        .has-tooltip:hover .tooltip-box {
+            visibility: visible;
+            opacity: 1;
+        }
+    </style>
+</head>
+<body class="relative w-full h-full overflow-hidden bg-slate-100">
+
+    <!-- Karanlık 3D Simülasyon Arenası (Lazerler ve nokta bulutunun görünürlüğü için koyu zemin) -->
+    <div id="canvas-container" class="absolute inset-0 w-full h-full z-0 cursor-grab active:cursor-grabbing bg-slate-950"></div>
+
+    <!-- Üst Başlık & Kontrol Çubuğu (Açık Tema Dashboard) -->
+    <header class="absolute top-0 left-0 right-0 z-20 flex flex-wrap items-center justify-between px-3 sm:px-6 py-2.5 light-panel border-b border-slate-200">
+        <div class="flex items-center space-x-3">
+            <div class="w-9 h-9 rounded-xl bg-sky-50 border border-sky-200 flex items-center justify-center text-sky-600 shadow-sm">
+                <i class="fa-solid fa-satellite-dish text-base animate-pulse"></i>
+            </div>
+            <div>
+                <h1 class="text-sm sm:text-base font-bold tracking-tight text-slate-800 flex items-center gap-2">
+                    LiDAR <span class="text-sky-700 font-mono-code text-xs px-2 py-0.5 rounded-full bg-sky-100 border border-sky-300">KUSURSUZ OPTİK ÖRTÜLEME</span>
+                </h1>
+                <p class="text-[11px] text-slate-500 hidden md:block">Gerçek Kör Nokta (Lazer Gölgesi) • Senkronize Sonar/ToF Sentezleyici • Dinamik Nokta Yaşamı</p>
+            </div>
+        </div>
+
+        <div class="flex items-center space-x-2 sm:space-x-3">
+            <!-- Ses Efektleri Aç / Kapa Butonu -->
+            <button id="btn-toggle-sound" class="px-3 py-1.5 text-xs font-semibold text-slate-700 hover:text-slate-900 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg transition-all flex items-center gap-1.5 shadow-sm">
+                <i id="sound-icon" class="fa-solid fa-volume-xmark text-rose-500 text-sm"></i>
+                <span id="sound-text">Ses: Kapalı</span>
+            </button>
+
+            <!-- Kör Nokta Özel Test Düğmesi -->
+            <button id="btn-quick-occlusion-test" class="px-3 py-1.5 text-xs font-bold text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-300 rounded-lg transition-all flex items-center gap-1.5 shadow-sm">
+                <i class="fa-solid fa-shield-halved text-amber-600 text-sm"></i>
+                <span>Kör Nokta Testi Yap</span>
+            </button>
+
+            <!-- Eğitici Kılavuz Butonu -->
+            <button id="btn-open-edu" class="px-3 py-1.5 text-xs font-semibold text-sky-700 hover:text-sky-800 bg-sky-50 hover:bg-sky-100 border border-sky-200 rounded-lg transition-all flex items-center gap-1.5 shadow-sm">
+                <i class="fa-solid fa-graduation-cap text-sky-600 text-sm"></i>
+                <span class="hidden sm:inline">Nasıl Çalışır?</span>
+            </button>
+
+            <!-- Geliştirici İmzası & LinkedIn Bağlantısı -->
+            <a href="https://www.linkedin.com/in/batuhanbayatlı" target="_blank" rel="noopener noreferrer" 
+               class="flex items-center space-x-2 bg-gradient-to-r from-sky-600 to-blue-700 hover:from-sky-700 hover:to-blue-800 text-white px-3.5 py-1.5 rounded-lg text-xs font-medium shadow-md shadow-sky-500/20 transition-all transform hover:scale-[1.02]">
+                <i class="fa-brands fa-linkedin text-white text-sm"></i>
+                <span class="text-sky-100 text-[11px] hidden sm:inline">Geliştirici:</span>
+                <span class="font-bold tracking-wide">Batuhan Bayatlı</span>
+                <i class="fa-solid fa-arrow-up-right-from-square text-[10px] text-sky-200 ml-0.5"></i>
+            </a>
+        </div>
+    </header>
+
+    <!-- Sol Panel: Telemetri & Canlı Ölçüm (Açık Dashboard) -->
+    <div class="absolute top-16 left-3 sm:left-4 z-10 w-72 sm:w-80 light-panel rounded-2xl p-4 transition-all duration-300 pointer-events-auto">
+        <div class="flex items-center justify-between pb-2.5 mb-3 border-b border-slate-200">
+            <span class="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-2">
+                <span id="scan-ping-dot" class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping inline-block"></span>
+                Sensör Telemetrisi
+            </span>
+            <span id="hud-status" class="text-[10px] font-mono-code font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
+                TARANIYOR
+            </span>
+        </div>
+
+        <!-- Telemetri Kutucukları -->
+        <div class="grid grid-cols-2 gap-2.5 text-xs font-mono-code mb-3">
+            <div class="light-subcard p-2.5 rounded-xl relative has-tooltip">
+                <div class="text-[10px] text-slate-500 flex items-center justify-between font-sans">
+                    <span class="font-medium">Azimut Açısı</span>
+                    <i class="fa-solid fa-compass text-sky-600"></i>
+                </div>
+                <div id="hud-azimuth" class="text-base font-bold text-slate-800 mt-0.5">000.0°</div>
+                <div class="tooltip-box absolute left-0 bottom-full mb-2 w-56 p-2.5 bg-slate-900 border border-slate-700 text-[11px] text-white rounded-xl shadow-xl z-30 font-sans pointer-events-none">
+                    <strong class="text-sky-400">Azimut Açısı:</strong> LiDAR döner kafasının 360° pusula etrafında anlık baktığı yatay açıdır.
+                </div>
+            </div>
+
+            <div class="light-subcard p-2.5 rounded-xl relative has-tooltip">
+                <div class="text-[10px] text-slate-500 flex items-center justify-between font-sans">
+                    <span class="font-medium">Aktif Noktalar</span>
+                    <i class="fa-solid fa-braille text-purple-600"></i>
+                </div>
+                <div id="hud-points" class="text-base font-bold text-purple-700 mt-0.5">0</div>
+                <div class="tooltip-box absolute left-0 bottom-full mb-2 w-56 p-2.5 bg-slate-900 border border-slate-700 text-[11px] text-white rounded-xl shadow-xl z-30 font-sans pointer-events-none">
+                    <strong class="text-purple-400">Canlı Nokta Bulutu:</strong> Havada o an mevcut olan aktif yansıma sayısı. Ömrü dolan noktalar silinir.
+                </div>
+            </div>
+
+            <div class="light-subcard p-2.5 rounded-xl relative has-tooltip">
+                <div class="text-[10px] text-slate-500 flex items-center justify-between font-sans">
+                    <span class="font-medium">Darbe / Kare</span>
+                    <i class="fa-solid fa-crosshairs text-emerald-600"></i>
+                </div>
+                <div id="hud-hits-count" class="text-base font-bold text-emerald-700 mt-0.5">0 vuruş</div>
+                <div class="tooltip-box absolute left-0 bottom-full mb-2 w-56 p-2.5 bg-slate-900 border border-slate-700 text-[11px] text-white rounded-xl shadow-xl z-30 font-sans pointer-events-none">
+                    <strong class="text-emerald-400">Darbe Sayısı:</strong> Bu karede en öndeki opak yüzeye fiziksel olarak isabet eden lazer ışın sayısı.
+                </div>
+            </div>
+
+            <div class="light-subcard p-2.5 rounded-xl relative has-tooltip">
+                <div class="text-[10px] text-slate-500 flex items-center justify-between font-sans">
+                    <span class="font-medium">Örtüleme Durumu</span>
+                    <i class="fa-solid fa-shield-halved text-amber-600"></i>
+                </div>
+                <div class="text-xs font-bold text-amber-700 mt-1">KESİN KÖR NOKTA</div>
+                <div class="tooltip-box absolute left-0 bottom-full mb-2 w-56 p-2.5 bg-slate-900 border border-slate-700 text-[11px] text-white rounded-xl shadow-xl z-30 font-sans pointer-events-none">
+                    <strong class="text-amber-400">Optik Engelleme (Kör Nokta):</strong> Lazer ilk çarptığı yüzeyde tamamen durur. Arkadaki nesneler asla taranamaz!
+                </div>
+            </div>
+        </div>
+
+        <!-- Time of Flight (ToF) Bilimsel Hesap Kartı -->
+        <div class="p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs">
+            <div class="flex items-center justify-between text-[11px] text-slate-700 font-semibold mb-1">
+                <span class="flex items-center gap-1.5"><i class="fa-solid fa-stopwatch text-sky-600"></i> Time-of-Flight (ToF)</span>
+                <span class="font-mono-code text-[10px] text-slate-400">c ≈ 300.000 km/s</span>
+            </div>
+            
+            <div class="font-mono-code text-sky-800 text-center py-1.5 bg-sky-50/80 rounded-lg border border-sky-200 text-xs mb-2 font-bold">
+                Mesafe = (c × Δt) ÷ 2
+            </div>
+
+            <div class="space-y-1.5 font-mono-code text-[11px] bg-white p-2 rounded-lg border border-slate-200">
+                <div class="flex justify-between items-center">
+                    <span class="text-slate-500">Ön Yüzey Mesafesi:</span>
+                    <span id="hud-last-dist" class="text-sky-700 font-bold">-- m</span>
+                </div>
+                <div class="flex justify-between items-center">
+                    <span class="text-slate-500">Işığın Süresi (Δt):</span>
+                    <span id="hud-last-tof" class="text-emerald-700 font-bold">-- ns</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Seçili Obje Bilgi Kutusu -->
+        <div id="selected-object-box" class="mt-3 p-3 rounded-xl bg-indigo-50/80 border border-indigo-200 text-xs hidden">
+            <div class="flex items-center justify-between text-indigo-900 font-bold mb-1">
+                <span class="flex items-center gap-1.5">
+                    <i class="fa-solid fa-arrows-up-down-left-right text-indigo-600"></i>
+                    <span id="sel-obj-name">Seçili Obje</span>
+                </span>
+                <button id="btn-delete-selected" class="text-rose-600 hover:text-white hover:bg-rose-600 px-2 py-0.5 rounded-md border border-rose-300 text-[10px] font-semibold transition-all">
+                    <i class="fa-solid fa-trash mr-1"></i> Sil
+                </button>
+            </div>
+            <div class="text-[11px] text-slate-600">
+                Konum: <span id="sel-obj-coords" class="font-mono-code text-indigo-700 font-bold">X: 0.0, Z: 0.0</span>
+            </div>
+            <div class="text-[10px] text-indigo-700 mt-1.5 flex items-start gap-1 font-sans">
+                <i class="fa-solid fa-circle-info mt-0.5 text-indigo-500"></i>
+                <span>Nesneyi başka bir objenin arkasına koyduğunuzda, arkadaki nesnenin üzerinde <strong>hiçbir noktanın oluşmadığını</strong> (kör nokta) görebilirsiniz!</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sağ Panel: Objeler ve Simülasyon Ayarları (Açık Tema) -->
+    <div id="control-panel" class="absolute top-16 right-3 sm:right-4 z-10 w-80 max-h-[calc(100vh-5rem)] overflow-y-auto light-panel rounded-2xl p-4 transition-all duration-300 pointer-events-auto">
+        
+        <div class="flex items-center justify-between pb-2.5 mb-3 border-b border-slate-200">
+            <span class="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                <i class="fa-solid fa-sliders text-sky-600"></i> Denetim Masası
+            </span>
+            <button id="btn-toggle-scan" class="px-3 py-1 text-xs rounded-lg font-bold bg-emerald-600 hover:bg-emerald-700 text-white transition-all shadow-sm">
+                Durdur
+            </button>
+        </div>
+
+        <div class="space-y-3.5 text-xs">
+            
+            <!-- Canlı Obje Ekleme Kartı -->
+            <div class="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
+                <div class="flex items-center justify-between">
+                    <span class="font-bold text-slate-800 flex items-center gap-1.5 text-xs">
+                        <i class="fa-solid fa-cube text-sky-600"></i> Sahneye Obje Ekle:
+                    </span>
+                    <span class="text-[10px] text-slate-400">Tıkla & Ekle</span>
+                </div>
+                
+                <div class="grid grid-cols-2 gap-2">
+                    <button id="btn-add-car" class="flex items-center gap-1.5 justify-center py-2 px-2 bg-white hover:bg-sky-50 border border-slate-200 hover:border-sky-400 text-slate-700 hover:text-sky-700 rounded-lg font-medium text-xs transition-all shadow-sm">
+                        <i class="fa-solid fa-car text-blue-600"></i> Araba Ekle
+                    </button>
+                    <button id="btn-add-ped" class="flex items-center gap-1.5 justify-center py-2 px-2 bg-white hover:bg-amber-50 border border-slate-200 hover:border-amber-400 text-slate-700 hover:text-amber-700 rounded-lg font-medium text-xs transition-all shadow-sm">
+                        <i class="fa-solid fa-person-walking text-amber-600"></i> Yaya Ekle
+                    </button>
+                    <button id="btn-add-wall" class="flex items-center gap-1.5 justify-center py-2 px-2 bg-white hover:bg-rose-50 border border-slate-200 hover:border-rose-400 text-slate-700 hover:text-rose-700 rounded-lg font-medium text-xs transition-all shadow-sm">
+                        <i class="fa-solid fa-shield text-rose-600"></i> Geniş Duvar
+                    </button>
+                    <button id="btn-add-tree" class="flex items-center gap-1.5 justify-center py-2 px-2 bg-white hover:bg-emerald-50 border border-slate-200 hover:border-emerald-400 text-slate-700 hover:text-emerald-700 rounded-lg font-medium text-xs transition-all shadow-sm">
+                        <i class="fa-solid fa-tree text-emerald-600"></i> Ağaç Ekle
+                    </button>
+                </div>
+
+                <div class="flex items-center justify-between pt-1 text-[11px]">
+                    <button id="btn-setup-blindspot" class="text-amber-700 hover:text-amber-900 font-bold underline flex items-center gap-1">
+                        <i class="fa-solid fa-eye-slash text-[10px]"></i> Kör Nokta Demo Düzeni
+                    </button>
+                    <button id="btn-reset-env" class="text-slate-400 hover:text-rose-600 font-medium">
+                        <i class="fa-solid fa-rotate-left text-[10px]"></i> Varsayılan
+                    </button>
+                </div>
+            </div>
+
+            <!-- Nokta Kalıcılık Süresi / TTL Slider -->
+            <div class="p-3 rounded-xl bg-slate-50 border border-slate-200">
+                <div class="flex justify-between text-slate-700 mb-1">
+                    <span class="flex items-center gap-1 font-semibold text-slate-800">
+                        <i class="fa-solid fa-clock-rotate-left text-sky-600"></i> Nokta Kalıcılığı (TTL):
+                    </span>
+                    <span id="label-ttl" class="font-mono-code text-sky-700 font-bold">1.2 sn</span>
+                </div>
+                <input id="slider-ttl" type="range" min="0.3" max="3.5" step="0.1" value="1.2" class="w-full h-1.5 bg-slate-300 rounded-lg cursor-pointer">
+                <p class="text-[10px] text-slate-500 mt-1 leading-normal font-sans">
+                    Noktaların kaç saniyede silineceğini belirler. Nesne hareket edince arkasında eski hayalet izler hemen kaybolur.
+                </p>
+            </div>
+
+            <!-- Dönüş Hızı (RPM) Slider -->
+            <div>
+                <div class="flex justify-between text-slate-700 mb-1">
+                    <span class="font-semibold text-slate-800">Dönüş Sürati (RPM):</span>
+                    <span id="label-rpm" class="font-mono-code text-sky-700 font-bold">20 RPM</span>
+                </div>
+                <input id="slider-rpm" type="range" min="5" max="60" value="20" class="w-full h-1.5 bg-slate-300 rounded-lg cursor-pointer">
+            </div>
+
+            <!-- Lazer Kanal Sayısı Seçimi -->
+            <div>
+                <label class="block text-slate-700 mb-1.5 font-semibold">Dikey Lazer Kanal Sayısı:</label>
+                <div class="grid grid-cols-4 gap-1.5">
+                    <button data-channels="8" class="btn-channel py-1.5 rounded-lg bg-white border border-slate-200 hover:border-sky-400 text-slate-600 font-medium">8 Ch</button>
+                    <button data-channels="16" class="btn-channel py-1.5 rounded-lg bg-white border border-slate-200 hover:border-sky-400 text-slate-600 font-medium">16 Ch</button>
+                    <button data-channels="32" class="btn-channel py-1.5 rounded-lg bg-sky-600 border border-sky-600 text-white font-bold shadow-sm">32 Ch</button>
+                    <button data-channels="64" class="btn-channel py-1.5 rounded-lg bg-white border border-slate-200 hover:border-sky-400 text-slate-600 font-medium">64 Ch</button>
+                </div>
+            </div>
+
+            <!-- Nokta Bulutu Renk Paleti -->
+            <div>
+                <label for="select-color-mode" class="block text-slate-700 mb-1 font-semibold">Nokta Bulutu Renklendirme:</label>
+                <select id="select-color-mode" class="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-slate-800 text-xs focus:outline-none focus:border-sky-500 shadow-sm">
+                    <option value="turbo">Mesafe Isı Haritası (Kırmızı: Yakın, Mavi: Uzak)</option>
+                    <option value="height">Yükseklik Haritası (Z-Ekseni Kotu)</option>
+                    <option value="neon">Neon Yeşil (Otonom Sürüş Görüşü)</option>
+                </select>
+            </div>
+
+            <!-- Görünüm Seçenekleri -->
+            <div class="pt-2 border-t border-slate-200 space-y-2">
+                <label class="flex items-center justify-between text-slate-700 cursor-pointer">
+                    <span class="flex items-center gap-1.5 font-semibold">
+                        <i class="fa-solid fa-shapes text-sky-600"></i> Gerçek 3D Objeleri Göster:
+                    </span>
+                    <input id="toggle-env-mesh" type="checkbox" checked class="w-4 h-4 text-sky-600 rounded bg-white border-slate-300 focus:ring-0">
+                </label>
+                <p class="text-[10px] text-slate-500 pl-5 -mt-1 font-sans">Kapatıldığında aracın beyninin algıladığı saf nokta bulutu kalır.</p>
+
+                <label class="flex items-center justify-between text-slate-700 cursor-pointer">
+                    <span class="flex items-center gap-1.5 font-semibold">
+                        <i class="fa-solid fa-bolt text-sky-600"></i> Lazer Işınlarını Göster:
+                    </span>
+                    <input id="toggle-laser-beams" type="checkbox" checked class="w-4 h-4 text-sky-600 rounded bg-white border-slate-300 focus:ring-0">
+                </label>
+            </div>
+
+            <!-- Temizleme ve Kamera Düğmeleri -->
+            <div class="pt-1 grid grid-cols-2 gap-2">
+                <button id="btn-clear-cloud" class="w-full py-1.5 text-xs bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 font-semibold rounded-lg flex items-center justify-center gap-1.5 transition-all">
+                    <i class="fa-solid fa-broom text-[11px]"></i> Bulutu Temizle
+                </button>
+                <button id="btn-reset-cam" class="w-full py-1.5 text-xs bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-700 font-semibold rounded-lg flex items-center justify-center gap-1.5 transition-all">
+                    <i class="fa-solid fa-camera-rotate text-[11px]"></i> Kamerayı Sıfırla
+                </button>
+            </div>
+
+            <!-- Kamera Ön Tanımları -->
+            <div class="pt-1">
+                <div class="text-[11px] text-slate-500 mb-1 font-medium">Kamera Bakış Açısı:</div>
+                <div class="grid grid-cols-3 gap-1.5">
+                    <button id="cam-orbit" class="py-1 text-[11px] bg-sky-600 text-white font-bold rounded-lg shadow-sm">Serbest 3D</button>
+                    <button id="cam-top" class="py-1 text-[11px] bg-white border border-slate-200 hover:border-sky-400 text-slate-700 font-medium rounded-lg">Kuşbakışı</button>
+                    <button id="cam-pov" class="py-1 text-[11px] bg-white border border-slate-200 hover:border-sky-400 text-slate-700 font-medium rounded-lg">Sensör Gözü</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Detaylı Açıklama & Bilimsel Rehber Modal'ı (Açık Tema) -->
+    <div id="modal-info" class="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-900/60 backdrop-blur-sm hidden opacity-0 transition-opacity duration-300">
+        <div class="light-panel w-full max-w-3xl rounded-3xl p-5 sm:p-7 border border-slate-300 max-h-[90vh] overflow-y-auto text-sm space-y-4 shadow-2xl">
+            
+            <div class="flex items-center justify-between pb-3 border-b border-slate-200">
+                <div class="flex items-center gap-2.5 text-slate-800 font-bold text-lg sm:text-xl">
+                    <div class="w-8 h-8 rounded-lg bg-sky-100 text-sky-600 flex items-center justify-center">
+                        <i class="fa-solid fa-lightbulb"></i>
+                    </div>
+                    <span>LiDAR Nasıl Çalışır? (Herkes İçin Rehber)</span>
+                </div>
+                <button id="btn-close-modal" class="text-slate-400 hover:text-slate-800 text-2xl transition-colors">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <div class="space-y-4 text-slate-700 text-xs sm:text-sm leading-relaxed">
+                <!-- Temel Prensip -->
+                <div class="bg-sky-50 p-4 rounded-2xl border border-sky-100">
+                    <h3 class="text-sky-900 font-bold text-base mb-1">Görünmez Lazerlerin Radarı:</h3>
+                    <p>
+                        LiDAR (Light Detection and Ranging), saniyede yüzbinlerce kez gözle görülemeyen kızılötesi lazer darbeleri gönderir. Işın cisimlere çarptığı an geri yansır. Sensör ışığın gidiş-dönüş süresini (Time-of-Flight) nanosaniye hassasiyetinde ölçerek hedefin mesafesini ve konumunu belirler.
+                    </p>
+                </div>
+
+                <!-- 4 Temel Mantık Kartı -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                    <div class="p-3.5 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-1">
+                        <strong class="text-amber-800 text-sm flex items-center gap-1.5 font-bold">
+                            <i class="fa-solid fa-shield-halved text-amber-600"></i> 1. Kusursuz Kör Nokta (Optik Örtüleme):
+                        </strong>
+                        <p class="text-xs text-slate-600">
+                            Işık opak maddelerin içinden geçemez! Örneğin bir beton duvarın arkasında duran bir araba varsa, lazer ışını ilk temas ettiği duvar yüzeyinde durur. Duvarın arkasındaki araba sensör tarafından <strong>asla görülemez</strong> ve arkasında gerçek bir "LiDAR gölgesi / kör nokta" oluşur.
+                        </p>
+                    </div>
+
+                    <div class="p-3.5 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-1">
+                        <strong class="text-sky-800 text-sm flex items-center gap-1.5 font-bold">
+                            <i class="fa-solid fa-stopwatch text-sky-600"></i> 2. Time-of-Flight (Uçuş Süresi):
+                        </strong>
+                        <p class="text-xs text-slate-600">
+                            Işık hızı saniyede yaklaşık 300.000 kilometredir. Işının yakındaki bir cisme çarpıp dönmesi yalnızca nanosaniyeler sürer. Formül: <code>Mesafe = (c × Δt) ÷ 2</code>.
+                        </p>
+                    </div>
+
+                    <div class="p-3.5 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-1">
+                        <strong class="text-purple-800 text-sm flex items-center gap-1.5 font-bold">
+                            <i class="fa-solid fa-braille text-purple-600"></i> 3. 3D Nokta Bulutu (Point Cloud):
+                        </strong>
+                        <p class="text-xs text-slate-600">
+                            Geri dönen her lazer darbesi uzayda 3 boyutlu bir koordinattır $(X, Y, Z)$. Binlerce nokta birleştiğinde tüm çevrenin milimetrik hassasiyette dijital ikizi çıkartılır.
+                        </p>
+                    </div>
+
+                    <div class="p-3.5 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-1">
+                        <strong class="text-emerald-800 text-sm flex items-center gap-1.5 font-bold">
+                            <i class="fa-solid fa-volume-high text-emerald-600"></i> 4. Senkronize Akustik Geri Bildirim:
+                        </strong>
+                        <p class="text-xs text-slate-600">
+                            Sensör her cisme vurduğunda anlık akustik klik/ping sesi çıkarır. Hedef sensöre ne kadar yakınsa üretilen ses frekansı o kadar tizleşir; uzaklaştıkça ses pesleşir.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Geliştirici Kredisi -->
+                <div class="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 flex flex-wrap items-center justify-between gap-3 text-xs">
+                    <div>
+                        <span class="text-slate-500">Geliştirici:</span>
+                        <strong class="text-slate-900 ml-1 text-sm">Batuhan Bayatlı</strong>
+                    </div>
+                    <a href="https://www.linkedin.com/in/batuhanbayatlı" target="_blank" class="text-sky-700 hover:text-sky-900 font-bold flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-sky-200 shadow-sm transition-all">
+                        <i class="fa-brands fa-linkedin text-sky-600 text-sm"></i>
+                        <span>LinkedIn Profili</span>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        /* =========================================================================
+           WEB AUDIO API - SENSÖR VE TESPİT İLE KUSURSUZ SENKRONİZE SES SENTEZLEYİCİSİ
+           ========================================================================= */
+        class SynchronizedLidarAudio {
+            constructor() {
+                this.ctx = null;
+                this.isMuted = true;
+                this.motorOsc = null;
+                this.motorGain = null;
+                this.lastHitAudioTime = 0;
+            }
+
+            init() {
+                if (this.ctx) return;
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                this.ctx = new AudioContext();
+
+                // Motor Uğultusu (Dönen kafa için düşük frekanslı yumuşak osilatör)
+                this.motorOsc = this.ctx.createOscillator();
+                this.motorOsc.type = 'sine';
+                this.motorOsc.frequency.setValueAtTime(42, this.ctx.currentTime);
+
+                this.motorGain = this.ctx.createGain();
+                this.motorGain.gain.setValueAtTime(0, this.ctx.currentTime);
+
+                this.motorOsc.connect(this.motorGain);
+                this.motorGain.connect(this.ctx.destination);
+                this.motorOsc.start();
+            }
+
+            toggleSound() {
+                if (!this.ctx) this.init();
+                if (this.ctx.state === 'suspended') {
+                    this.ctx.resume();
+                }
+                this.isMuted = !this.isMuted;
+                if (this.isMuted) {
+                    this.motorGain.gain.setTargetAtTime(0, this.ctx.currentTime, 0.05);
+                } else {
+                    this.motorGain.gain.setTargetAtTime(0.035, this.ctx.currentTime, 0.05);
+                }
+                return !this.isMuted;
+            }
+
+            updateMotorPitch(rpm) {
+                if (!this.ctx || this.isMuted) return;
+                const targetFreq = 30 + (rpm / 60) * 55;
+                this.motorOsc.frequency.setTargetAtTime(targetFreq, this.ctx.currentTime, 0.1);
+            }
+
+            // Lazerin bir cisme fiziksel olarak çarptığı an tetiklenir
+            triggerDetectionPing(distance, hitCount) {
+                if (!this.ctx || this.isMuted || hitCount === 0) return;
+                
+                const now = this.ctx.currentTime;
+                // Ses kartını tıkamamak için en az 55 milisaniyelik ritmik aralık
+                if (now - this.lastHitAudioTime < 0.055) return;
+                this.lastHitAudioTime = now;
+
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+
+                // Mesafe ne kadar yakınsa ses o kadar tiz (1600 Hz), uzaktaysa kalın (320 Hz)
+                const clampedDist = Math.max(1, Math.min(30, distance));
+                const freq = 1600 - (clampedDist / 30) * 1250;
+                
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(freq, now);
+
+                // İsabet eden ışın sayısı arttıkça ses hafifçe güçlenir
+                const volume = Math.min(0.045, 0.015 + (hitCount / 32) * 0.03);
+                gain.gain.setValueAtTime(volume, now);
+                gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.035);
+
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+
+                osc.start(now);
+                osc.stop(now + 0.038);
+            }
+        }
+
+        const lidarAudio = new SynchronizedLidarAudio();
+
+        /* =========================================================================
+           TEMEL THREE.JS VE SIMÜLASYON DEĞİŞKENLERİ
+           ========================================================================= */
+        const C_LIGHT = 299792458; // Işık hızı m/s
+        const MAX_POINTS = 55000;
+
+        let scene, camera, renderer, orbitControls, transformControls;
+        let lidarMountGroup, lidarTurretGroup;
+        let laserRaysGroup;
+        let interactiveObjects = [];
+        let selectedObject = null;
+        
+        // Kesin fiziksel tespit listesi (Sadece sahnedeki gerçek opak katı gövdeler)
+        let solidMeshes = [];
+
+        // Dinamik Nokta Bulutu Tamponu
+        let pointCloudGeometry, pointCloudMaterial, pointCloudMesh;
+        let pointPositions = new Float32Array(MAX_POINTS * 3);
+        let pointColors = new Float32Array(MAX_POINTS * 3);
+        let pointTimestamps = new Float32Array(MAX_POINTS);
+        let pointCount = 0;
+        let pointWriteIdx = 0;
+
+        const config = {
+            rpm: 20,
+            channels: 32,
+            isScanning: true,
+            colorMode: 'turbo',
+            pointSize: 1.8,
+            ttl: 1.2, // Nokta ömrü saniye
+            vFovMin: -24 * (Math.PI / 180),
+            vFovMax: 15 * (Math.PI / 180),
+            maxRange: 35.0
+        };
+
+        const raycaster = new THREE.Raycaster();
+        const mouseRaycaster = new THREE.Raycaster();
+        const mouseVec = new THREE.Vector2();
+        let currentAzimuth = 0;
+        const clock = new THREE.Clock();
+
+        function initScene() {
+            const container = document.getElementById('canvas-container');
+
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x050811);
+            scene.fog = new THREE.FogExp2(0x050811, 0.018);
+
+            camera = new THREE.PerspectiveCamera(52, window.innerWidth / window.innerHeight, 0.1, 200);
+            camera.position.set(0, 9.5, 16);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            container.appendChild(renderer.domElement);
+
+            orbitControls = new THREE.OrbitControls(camera, renderer.domElement);
+            orbitControls.enableDamping = true;
+            orbitControls.dampingFactor = 0.05;
+            orbitControls.maxDistance = 80;
+            orbitControls.minDistance = 2.5;
+            orbitControls.maxPolarAngle = Math.PI / 2 - 0.02;
+            orbitControls.target.set(0, 1.2, 0);
+
+            // Taşıma Gizmosu (TransformControls)
+            transformControls = new THREE.TransformControls(camera, renderer.domElement);
+            transformControls.setMode('translate');
+            transformControls.showY = false; // Sadece zeminde X-Z ekseninde hareket
+            transformControls.size = 0.85;
+            scene.add(transformControls);
+
+            transformControls.addEventListener('dragging-changed', function (event) {
+                orbitControls.enabled = !event.value;
+                if (selectedObject) {
+                    clearPointsNearObject(selectedObject, 4.0);
+                }
+            });
+
+            transformControls.addEventListener('change', function () {
+                if (selectedObject) {
+                    updateSelectedObjectUI(selectedObject);
+                    clearPointsNearObject(selectedObject, 3.8);
+                }
+            });
+
+            // Işıklandırma
+            const ambientLight = new THREE.AmbientLight(0x64748b, 1.6);
+            scene.add(ambientLight);
+
+            const dirLight = new THREE.DirectionalLight(0xf8fafc, 1.4);
+            dirLight.position.set(18, 30, 18);
+            dirLight.castShadow = true;
+            dirLight.shadow.mapSize.width = 2048;
+            dirLight.shadow.mapSize.height = 2048;
+            scene.add(dirLight);
+
+            // Zemin ve Grid
+            const gridHelper = new THREE.GridHelper(70, 70, 0x0284c7, 0x1e293b);
+            gridHelper.position.y = 0.005;
+            scene.add(gridHelper);
+
+            const floorGeo = new THREE.PlaneGeometry(70, 70);
+            const floorMat = new THREE.MeshStandardMaterial({
+                color: 0x090d1a,
+                roughness: 0.9,
+                metalness: 0.1
+            });
+            const floorMesh = new THREE.Mesh(floorGeo, floorMat);
+            floorMesh.rotation.x = -Math.PI / 2;
+            floorMesh.receiveShadow = true;
+            floorMesh.name = "ArenaZemin";
+            scene.add(floorMesh);
+
+            buildLiDARSensorUnit();
+            initPointCloudBuffer();
+            initLaserBeams();
+            setupInitialSceneObjects();
+
+            renderer.domElement.addEventListener('pointerdown', onPointerDown, false);
+        }
+
+        function buildLiDARSensorUnit() {
+            lidarMountGroup = new THREE.Group();
+            lidarMountGroup.position.set(0, 1.2, 0);
+
+            // Alt Kaide
+            const baseGeo = new THREE.CylinderGeometry(0.38, 0.44, 0.35, 32);
+            const baseMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.3, metalness: 0.85 });
+            const baseMesh = new THREE.Mesh(baseGeo, baseMat);
+            baseMesh.castShadow = true;
+            lidarMountGroup.add(baseMesh);
+
+            // Ayak
+            const standGeo = new THREE.CylinderGeometry(0.12, 0.16, 1.2, 16);
+            const standMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, metalness: 0.9, roughness: 0.2 });
+            const standMesh = new THREE.Mesh(standGeo, standMat);
+            standMesh.position.y = -0.6;
+            lidarMountGroup.add(standMesh);
+
+            // Dönen Üst Başlık (Turret)
+            lidarTurretGroup = new THREE.Group();
+            lidarTurretGroup.position.y = 0.25;
+
+            const opticalGeo = new THREE.CylinderGeometry(0.36, 0.36, 0.38, 32);
+            const opticalMat = new THREE.MeshPhysicalMaterial({ color: 0x050e18, roughness: 0.1, transmission: 0.4, thickness: 0.6, metalness: 0.9 });
+            const opticalMesh = new THREE.Mesh(opticalGeo, opticalMat);
+            lidarTurretGroup.add(opticalMesh);
+
+            const capGeo = new THREE.CylinderGeometry(0.38, 0.37, 0.08, 32);
+            const capMat = new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.85, roughness: 0.25 });
+            const capMesh = new THREE.Mesh(capGeo, capMat);
+            capMesh.position.y = 0.22;
+            lidarTurretGroup.add(capMesh);
+
+            // Lazer Verici Yarık
+            const emitterGeo = new THREE.BoxGeometry(0.04, 0.28, 0.08);
+            const emitterMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8 });
+            const emitterMesh = new THREE.Mesh(emitterGeo, emitterMat);
+            emitterMesh.position.set(0, 0, 0.34);
+            lidarTurretGroup.add(emitterMesh);
+
+            lidarMountGroup.add(lidarTurretGroup);
+            scene.add(lidarMountGroup);
+
+            // Mesafe Referans Halkaları (5m, 10m, 15m, 20m)
+            const ringsGroup = new THREE.Group();
+            [5, 10, 15, 20].forEach(radius => {
+                const rGeo = new THREE.RingGeometry(radius - 0.03, radius + 0.03, 64);
+                const rMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.2, side: THREE.DoubleSide });
+                const rMesh = new THREE.Mesh(rGeo, rMat);
+                rMesh.rotation.x = -Math.PI / 2;
+                rMesh.position.y = 0.012;
+                ringsGroup.add(rMesh);
+            });
+            scene.add(ringsGroup);
+        }
+
+        function createCarMesh() {
+            const car = new THREE.Group();
+            car.userData = { type: 'Car', name: 'Otomobil' };
+            const bodyMat = new THREE.MeshStandardMaterial({ color: 0x2563eb, roughness: 0.3, metalness: 0.6 });
+            const glassMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.1, metalness: 0.95 });
+            const wheelMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.8 });
+
+            const chassis = new THREE.Mesh(new THREE.BoxGeometry(2.1, 0.7, 4.4), bodyMat);
+            chassis.position.y = 0.65;
+            chassis.castShadow = true;
+            chassis.userData.parentGroup = car;
+            car.add(chassis);
+
+            const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.65, 2.4), glassMat);
+            cabin.position.set(0, 1.25, -0.2);
+            cabin.castShadow = true;
+            cabin.userData.parentGroup = car;
+            car.add(cabin);
+
+            const wheelGeo = new THREE.CylinderGeometry(0.38, 0.38, 0.28, 16);
+            [[-1.0, 0.38, 1.4], [1.0, 0.38, 1.4], [-1.0, 0.38, -1.4], [1.0, 0.38, -1.4]].forEach(pos => {
+                const w = new THREE.Mesh(wheelGeo, wheelMat);
+                w.rotation.z = Math.PI / 2;
+                w.position.set(...pos);
+                w.castShadow = true;
+                w.userData.parentGroup = car;
+                car.add(w);
+            });
+            return car;
+        }
+
+        function createWallMesh() {
+            const wall = new THREE.Group();
+            wall.userData = { type: 'Wall', name: 'Geniş Beton Duvar' };
+            const mat = new THREE.MeshStandardMaterial({ color: 0xe11d48, roughness: 0.8, metalness: 0.1 });
+            // Geniş ve yüksek solid engel duvarı (Kör nokta testinde mükemmel gölge yaratır)
+            const mesh = new THREE.Mesh(new THREE.BoxGeometry(4.2, 2.2, 0.5), mat);
+            mesh.position.y = 1.1;
+            mesh.castShadow = true;
+            mesh.userData.parentGroup = wall;
+            wall.add(mesh);
+            return wall;
+        }
+
+        function createPedestrianMesh() {
+            const ped = new THREE.Group();
+            ped.userData = { type: 'Pedestrian', name: 'Yaya' };
+            const mat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.5 });
+
+            const body = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.18, 0.9, 12), mat);
+            body.position.y = 1.05;
+            body.castShadow = true;
+            body.userData.parentGroup = ped;
+            ped.add(body);
+
+            const head = new THREE.Mesh(new THREE.SphereGeometry(0.16, 12, 12), mat);
+            head.position.y = 1.68;
+            head.castShadow = true;
+            head.userData.parentGroup = ped;
+            ped.add(head);
+
+            return ped;
+        }
+
+        function createTreeMesh() {
+            const tree = new THREE.Group();
+            tree.userData = { type: 'Tree', name: 'Ağaç' };
+            const trunkMat = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.9 });
+            const foliageMat = new THREE.MeshStandardMaterial({ color: 0x059669, roughness: 0.8 });
+
+            const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.3, 1.6, 8), trunkMat);
+            trunk.position.y = 0.8;
+            trunk.castShadow = true;
+            trunk.userData.parentGroup = tree;
+            tree.add(trunk);
+
+            const foliage = new THREE.Mesh(new THREE.ConeGeometry(1.6, 2.8, 8), foliageMat);
+            foliage.position.y = 2.45;
+            foliage.castShadow = true;
+            foliage.userData.parentGroup = tree;
+            tree.add(foliage);
+
+            return tree;
+        }
+
+        function registerInteractiveObject(obj, x, z, rotY = 0) {
+            obj.position.set(x, 0, z);
+            obj.rotation.y = rotY;
+
+            const bbox = new THREE.BoxHelper(obj, 0x0284c7);
+            bbox.visible = false;
+            obj.userData.bboxHelper = bbox;
+            scene.add(bbox);
+
+            scene.add(obj);
+            interactiveObjects.push(obj);
+            refreshSolidMeshesList();
+
+            selectObject(obj);
+            return obj;
+        }
+
+        // Raycasting için opak gövdeleri listeler
+        function refreshSolidMeshesList() {
+            solidMeshes = [];
+            const floor = scene.getObjectByName('ArenaZemin');
+            if (floor) solidMeshes.push(floor);
+
+            interactiveObjects.forEach(group => {
+                group.traverse(child => {
+                    if (child.isMesh) {
+                        solidMeshes.push(child);
+                    }
+                });
+            });
+        }
+
+        function setupInitialSceneObjects() {
+            // Başlangıçta duvar ve arkasında duran bir otomobil oluşturarak KÖS-KÖTÜK kör noktayı kanıtla!
+            registerInteractiveObject(createWallMesh(), 4.0, 3.5, -Math.PI * 0.28);
+            registerInteractiveObject(createCarMesh(), 7.8, 6.8, -Math.PI * 0.28); // Duvarın tam arkasında kalır!
+            registerInteractiveObject(createPedestrianMesh(), -3.8, 3.8, Math.PI * 0.3);
+            registerInteractiveObject(createTreeMesh(), -4.5, -4.0);
+        }
+
+        function initPointCloudBuffer() {
+            pointCloudGeometry = new THREE.BufferGeometry();
+            pointCloudGeometry.setAttribute('position', new THREE.BufferAttribute(pointPositions, 3));
+            pointCloudGeometry.setAttribute('color', new THREE.BufferAttribute(pointColors, 3));
+
+            // Parlak yuvarlak nokta parçacık dokusu
+            const canvas = document.createElement('canvas');
+            canvas.width = 32;
+            canvas.height = 32;
+            const ctx = canvas.getContext('2d');
+            const grad = ctx.createRadialGradient(16, 16, 0, 16, 16, 16);
+            grad.addColorStop(0, 'rgba(255,255,255,1)');
+            grad.addColorStop(0.45, 'rgba(255,255,255,0.85)');
+            grad.addColorStop(1, 'rgba(255,255,255,0)');
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, 32, 32);
+
+            const pointTexture = new THREE.CanvasTexture(canvas);
+
+            pointCloudMaterial = new THREE.PointsMaterial({
+                size: config.pointSize,
+                vertexColors: true,
+                map: pointTexture,
+                transparent: true,
+                alphaTest: 0.05,
+                depthWrite: false,
+                blending: THREE.AdditiveBlending
+            });
+
+            pointCloudMesh = new THREE.Points(pointCloudGeometry, pointCloudMaterial);
+            scene.add(pointCloudMesh);
+        }
+
+        function initLaserBeams() {
+            laserRaysGroup = new THREE.Group();
+            laserRaysGroup.name = "LaserBeamsGroup";
+            scene.add(laserRaysGroup);
+            updateLaserBeamsGeometry();
+        }
+
+        function updateLaserBeamsGeometry() {
+            while (laserRaysGroup.children.length > 0) {
+                const child = laserRaysGroup.children[0];
+                if (child.geometry) child.geometry.dispose();
+                if (child.material) child.material.dispose();
+                laserRaysGroup.remove(child);
+            }
+
+            const beamMaterial = new THREE.LineBasicMaterial({
+                color: 0x38bdf8,
+                transparent: true,
+                opacity: 0.45,
+                blending: THREE.AdditiveBlending
+            });
+
+            for (let i = 0; i < config.channels; i++) {
+                const points = [new THREE.Vector3(0, 1.45, 0), new THREE.Vector3(0, 1.45, 12)];
+                const geo = new THREE.BufferGeometry().setFromPoints(points);
+                const line = new THREE.Line(geo, beamMaterial);
+                laserRaysGroup.add(line);
+            }
+        }
+
+        // Hareket ettirilen objenin eski konumundaki noktaları anında yok et (Hayalet iz kalmaz)
+        function clearPointsNearObject(obj, radius = 4.0) {
+            const objPos = obj.position;
+            const r2 = radius * radius;
+            let write = 0;
+
+            for (let i = 0; i < pointCount; i++) {
+                const idx = i * 3;
+                const px = pointPositions[idx];
+                const pz = pointPositions[idx + 2];
+                const dx = px - objPos.x;
+                const dz = pz - objPos.z;
+
+                if (dx * dx + dz * dz > r2) {
+                    if (write !== i) {
+                        const wIdx = write * 3;
+                        pointPositions[wIdx] = pointPositions[idx];
+                        pointPositions[wIdx + 1] = pointPositions[idx + 1];
+                        pointPositions[wIdx + 2] = pointPositions[idx + 2];
+
+                        pointColors[wIdx] = pointColors[idx];
+                        pointColors[wIdx + 1] = pointColors[idx + 1];
+                        pointColors[wIdx + 2] = pointColors[idx + 2];
+
+                        pointTimestamps[write] = pointTimestamps[i];
+                    }
+                    write++;
+                }
+            }
+            pointCount = write;
+            pointWriteIdx = write % MAX_POINTS;
+            pointCloudGeometry.setDrawRange(0, pointCount);
+            pointCloudGeometry.attributes.position.needsUpdate = true;
+            pointCloudGeometry.attributes.color.needsUpdate = true;
+        }
+
+        // Ömrü dolan noktaları solup silecek dinamik TTL döngüsü
+        function pruneExpiredPoints(currentTime) {
+            if (pointCount === 0) return;
+
+            let write = 0;
+            const ttl = config.ttl;
+
+            for (let i = 0; i < pointCount; i++) {
+                const age = currentTime - pointTimestamps[i];
+                if (age <= ttl) {
+                    if (write !== i) {
+                        const wIdx = write * 3;
+                        const rIdx = i * 3;
+                        pointPositions[wIdx] = pointPositions[rIdx];
+                        pointPositions[wIdx + 1] = pointPositions[rIdx + 1];
+                        pointPositions[wIdx + 2] = pointPositions[rIdx + 2];
+
+                        // Zamanla hafif sönümleme
+                        const fade = Math.max(0.15, 1.0 - (age / ttl) * 0.55);
+                        pointColors[wIdx] = pointColors[rIdx] * fade;
+                        pointColors[wIdx + 1] = pointColors[rIdx + 1] * fade;
+                        pointColors[wIdx + 2] = pointColors[rIdx + 2] * fade;
+
+                        pointTimestamps[write] = pointTimestamps[i];
+                    }
+                    write++;
+                }
+            }
+            pointCount = write;
+            pointWriteIdx = write % MAX_POINTS;
+            pointCloudGeometry.setDrawRange(0, pointCount);
+            pointCloudGeometry.attributes.position.needsUpdate = true;
+            pointCloudGeometry.attributes.color.needsUpdate = true;
+        }
+
+        function getTurboColor(t) {
+            t = Math.max(0, Math.min(1, t));
+            const r = 0.1357 + t * (4.61539 - t * (42.6603 - t * (132.131 - t * (161.076 - t * 65.273))));
+            const g = 0.0914 + t * (2.19418 + t * (4.87492 - t * (14.1005 - t * (4.27729 - t * 6.769))));
+            const b = 0.10667 + t * (12.5845 - t * (48.8242 - t * (52.2843 - t * (16.273 - t * 43.1))));
+            return [Math.max(0, Math.min(1, r)), Math.max(0, Math.min(1, g)), Math.max(0, Math.min(1, b))];
+        }
+
+        function calculatePointColor(dist, hitPoint) {
+            if (config.colorMode === 'turbo') {
+                const normDist = Math.min(dist / config.maxRange, 1.0);
+                return getTurboColor(1.0 - normDist);
+            } else if (config.colorMode === 'height') {
+                const normHeight = Math.max(0, Math.min(1.0, hitPoint.y / 2.8));
+                return [normHeight, 0.45, 1.0 - normHeight];
+            } else {
+                return [0.0, 1.0, 0.5]; // Neon Yeşil
+            }
+        }
+
+        /* =========================================================================
+           KUSURSUZ OPTİK ÖRTÜLEME (LİDAR SHADOW / KÖR NOKTA) RAYCASTING MOTORU
+           - Her lazer kanalı için raycast atılır.
+           - Mesafeye göre katı sıralanır ve KESİNLİKLE SADECE İLK KESİŞİM (intersects[0]) ALINIR!
+           - Işın intersects[0].point noktasında anında durdurulur. Arkasındaki cisimlere
+             asla ve kata tek bir nokta dahi ÇİZİLMEZ!
+           ========================================================================= */
+        function performLidarScan(delta, currentTime) {
+            if (!config.isScanning) return;
+
+            const radPerSec = (config.rpm * 2 * Math.PI) / 60;
+            const deltaAngle = radPerSec * delta;
+
+            lidarTurretGroup.rotation.y -= deltaAngle;
+            currentAzimuth = (-lidarTurretGroup.rotation.y) % (2 * Math.PI);
+            if (currentAzimuth < 0) currentAzimuth += 2 * Math.PI;
+
+            const emitterPos = new THREE.Vector3();
+            lidarTurretGroup.getWorldPosition(emitterPos);
+            emitterPos.y += 0.05;
+
+            let closestDistanceInScan = null;
+            let currentFrameHitCount = 0;
+
+            for (let ch = 0; ch < config.channels; ch++) {
+                const vT = config.channels > 1 ? ch / (config.channels - 1) : 0.5;
+                const vAngle = config.vFovMin + vT * (config.vFovMax - config.vFovMin);
+
+                const rayDir = new THREE.Vector3(
+                    Math.sin(currentAzimuth) * Math.cos(vAngle),
+                    Math.sin(vAngle),
+                    Math.cos(currentAzimuth) * Math.cos(vAngle)
+                ).normalize();
+
+                raycaster.set(emitterPos, rayDir);
+                raycaster.far = config.maxRange;
+
+                // Tüm katı cisimlerle kesişimleri hesapla
+                const intersects = raycaster.intersectObjects(solidMeshes, false);
+                let hitPos = null;
+
+                if (intersects.length > 0) {
+                    // Mesafeye göre küçükten büyüğe sıralama garantisi
+                    intersects.sort((a, b) => a.distance - b.distance);
+
+                    // KESİN KURAL: YALNIZCA İLK KESİŞİM (FIRST HIT)!
+                    const firstContact = intersects[0];
+                    const hitDist = firstContact.distance;
+                    hitPos = firstContact.point;
+
+                    // Noktayı SADECE bu ilk temas yüzeyine yaz
+                    const idx = pointWriteIdx * 3;
+                    pointPositions[idx] = hitPos.x + (Math.random() - 0.5) * 0.015;
+                    pointPositions[idx + 1] = hitPos.y + (Math.random() - 0.5) * 0.015;
+                    pointPositions[idx + 2] = hitPos.z + (Math.random() - 0.5) * 0.015;
+
+                    const [cr, cg, cb] = calculatePointColor(hitDist, hitPos);
+                    pointColors[idx] = cr;
+                    pointColors[idx + 1] = cg;
+                    pointColors[idx + 2] = cb;
+
+                    pointTimestamps[pointWriteIdx] = currentTime;
+
+                    pointWriteIdx = (pointWriteIdx + 1) % MAX_POINTS;
+                    if (pointCount < MAX_POINTS) pointCount++;
+
+                    if (closestDistanceInScan === null || hitDist < closestDistanceInScan) {
+                        closestDistanceInScan = hitDist;
+                    }
+                    currentFrameHitCount++;
+                }
+
+                // Lazer çizgisinin ucunu İLK ÇARPTIĞI YERDE (hitPos) DURDUR!
+                // Böylece kullanıcı ışının öndeki engeli aşamadığını gözleriyle görür.
+                if (laserRaysGroup.children[ch]) {
+                    const line = laserRaysGroup.children[ch];
+                    const posAttr = line.geometry.attributes.position;
+                    posAttr.setXYZ(0, emitterPos.x, emitterPos.y, emitterPos.z);
+                    if (hitPos) {
+                        posAttr.setXYZ(1, hitPos.x, hitPos.y, hitPos.z);
+                    } else {
+                        const farPoint = emitterPos.clone().add(rayDir.clone().multiplyScalar(15));
+                        posAttr.setXYZ(1, farPoint.x, farPoint.y, farPoint.z);
+                    }
+                    posAttr.needsUpdate = true;
+                }
+            }
+
+            // SES TETİKLEMESİ: Yalnızca fiziksel olarak en az 1 ışın cisme çarptığında çalışır!
+            if (currentFrameHitCount > 0 && closestDistanceInScan !== null) {
+                lidarAudio.triggerDetectionPing(closestDistanceInScan, currentFrameHitCount);
+            }
+
+            pointCloudGeometry.attributes.position.needsUpdate = true;
+            pointCloudGeometry.attributes.color.needsUpdate = true;
+            pointCloudGeometry.setDrawRange(0, pointCount);
+
+            updateTelemetry(closestDistanceInScan, currentFrameHitCount);
+
+            if (selectedObject && selectedObject.userData.bboxHelper) {
+                selectedObject.userData.bboxHelper.update();
+            }
+        }
+
+        function updateTelemetry(distance, hitCount) {
+            const deg = (currentAzimuth * 180 / Math.PI).toFixed(1);
+            document.getElementById('hud-azimuth').textContent = `${deg.padStart(5, '0')}°`;
+            document.getElementById('hud-points').textContent = pointCount.toLocaleString('tr-TR');
+            document.getElementById('hud-hits-count').textContent = `${hitCount} darbe`;
+
+            if (distance !== null) {
+                document.getElementById('hud-last-dist').textContent = `${distance.toFixed(2)} m`;
+                const tofNs = ((2 * distance) / C_LIGHT) * 1e9;
+                document.getElementById('hud-last-tof').textContent = `${tofNs.toFixed(2)} ns`;
+            }
+        }
+
+        function onPointerDown(event) {
+            if (transformControls.dragging) return;
+            const rect = renderer.domElement.getBoundingClientRect();
+            mouseVec.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+            mouseVec.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+            mouseRaycaster.setFromCamera(mouseVec, camera);
+
+            const clickableMeshes = [];
+            interactiveObjects.forEach(group => {
+                group.traverse(child => {
+                    if (child.isMesh) clickableMeshes.push(child);
+                });
+            });
+
+            const intersects = mouseRaycaster.intersectObjects(clickableMeshes, false);
+            if (intersects.length > 0) {
+                let target = intersects[0].object;
+                while (target.parent && !interactiveObjects.includes(target)) {
+                    target = target.parent;
+                }
+                if (interactiveObjects.includes(target)) {
+                    selectObject(target);
+                }
+            }
+        }
+
+        function selectObject(obj) {
+            if (selectedObject && selectedObject.userData.bboxHelper) {
+                selectedObject.userData.bboxHelper.visible = false;
+            }
+
+            selectedObject = obj;
+            if (obj) {
+                transformControls.attach(obj);
+                if (obj.userData.bboxHelper) {
+                    obj.userData.bboxHelper.visible = true;
+                    obj.userData.bboxHelper.update();
+                }
+                updateSelectedObjectUI(obj);
+            } else {
+                transformControls.detach();
+                document.getElementById('selected-object-box').classList.add('hidden');
+            }
+        }
+
+        function updateSelectedObjectUI(obj) {
+            const box = document.getElementById('selected-object-box');
+            box.classList.remove('hidden');
+            document.getElementById('sel-obj-name').textContent = obj.userData.name || 'Obje';
+            document.getElementById('sel-obj-coords').textContent = `X: ${obj.position.x.toFixed(1)}, Z: ${obj.position.z.toFixed(1)}`;
+        }
+
+        function deleteSelectedObject() {
+            if (!selectedObject) return;
+            clearPointsNearObject(selectedObject, 4.5);
+
+            const index = interactiveObjects.indexOf(selectedObject);
+            if (index > -1) {
+                interactiveObjects.splice(index, 1);
+            }
+
+            if (selectedObject.userData.bboxHelper) {
+                scene.remove(selectedObject.userData.bboxHelper);
+            }
+
+            transformControls.detach();
+            scene.remove(selectedObject);
+            selectedObject = null;
+            document.getElementById('selected-object-box').classList.add('hidden');
+            refreshSolidMeshesList();
+        }
+
+        function setupBlindSpotDemonstration() {
+            // Önceki sahneyi temizle
+            while (interactiveObjects.length > 0) {
+                const obj = interactiveObjects.pop();
+                if (obj.userData.bboxHelper) scene.remove(obj.userData.bboxHelper);
+                scene.remove(obj);
+            }
+            selectObject(null);
+            document.getElementById('btn-clear-cloud').click();
+
+            // 1. Önde geniş bir beton duvar
+            const frontWall = createWallMesh();
+            registerInteractiveObject(frontWall, 3.8, 3.5, -Math.PI * 0.28);
+
+            // 2. Duvarın tam arkasında bir otomobil
+            const backCar = createCarMesh();
+            registerInteractiveObject(backCar, 7.8, 6.8, -Math.PI * 0.28);
+
+            // Duvarı seçili yap
+            selectObject(frontWall);
+
+            // Kullanıcıya bilgi ver
+            document.getElementById('sel-obj-coords').textContent = "KÖR NOKTA DEMOSU HAZIR";
+        }
+
+        function initUIEvents() {
+            // Ses Aç/Kapa Butonu
+            const btnSound = document.getElementById('btn-toggle-sound');
+            const soundIcon = document.getElementById('sound-icon');
+            const soundText = document.getElementById('sound-text');
+
+            btnSound.addEventListener('click', () => {
+                const isActive = lidarAudio.toggleSound();
+                if (isActive) {
+                    soundIcon.className = 'fa-solid fa-volume-high text-emerald-600 text-sm';
+                    soundText.textContent = 'Ses: Açık';
+                    btnSound.className = 'px-3 py-1.5 text-xs font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 rounded-lg transition-all flex items-center gap-1.5 shadow-sm';
+                } else {
+                    soundIcon.className = 'fa-solid fa-volume-xmark text-rose-500 text-sm';
+                    soundText.textContent = 'Ses: Kapalı';
+                    btnSound.className = 'px-3 py-1.5 text-xs font-semibold text-slate-700 hover:text-slate-900 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg transition-all flex items-center gap-1.5 shadow-sm';
+                }
+            });
+
+            // Kör Nokta Hızlı Test Butonları (Hem üst bar hem panel)
+            document.getElementById('btn-quick-occlusion-test').addEventListener('click', setupBlindSpotDemonstration);
+            document.getElementById('btn-setup-blindspot').addEventListener('click', setupBlindSpotDemonstration);
+
+            // TTL / Nokta Yaşam Süresi Slider
+            const ttlSlider = document.getElementById('slider-ttl');
+            const ttlLabel = document.getElementById('label-ttl');
+            ttlSlider.addEventListener('input', (e) => {
+                const val = parseFloat(e.target.value);
+                config.ttl = val;
+                ttlLabel.textContent = `${val.toFixed(1)} sn`;
+            });
+
+            // RPM Slider
+            const rpmSlider = document.getElementById('slider-rpm');
+            const rpmLabel = document.getElementById('label-rpm');
+            rpmSlider.addEventListener('input', (e) => {
+                const val = parseInt(e.target.value);
+                config.rpm = val;
+                rpmLabel.textContent = `${val} RPM`;
+                lidarAudio.updateMotorPitch(val);
+            });
+
+            // Duraklat / Başlat
+            const btnToggleScan = document.getElementById('btn-toggle-scan');
+            const hudStatus = document.getElementById('hud-status');
+            btnToggleScan.addEventListener('click', () => {
+                config.isScanning = !config.isScanning;
+                if (config.isScanning) {
+                    btnToggleScan.textContent = 'Durdur';
+                    btnToggleScan.className = 'px-3 py-1 text-xs rounded-lg font-bold bg-emerald-600 hover:bg-emerald-700 text-white transition-all shadow-sm';
+                    hudStatus.textContent = 'TARANIYOR';
+                    hudStatus.className = 'text-[10px] font-mono-code font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300';
+                } else {
+                    btnToggleScan.textContent = 'Başlat';
+                    btnToggleScan.className = 'px-3 py-1 text-xs rounded-lg font-bold bg-amber-500 hover:bg-amber-600 text-white transition-all shadow-sm';
+                    hudStatus.textContent = 'DURDURULDU';
+                    hudStatus.className = 'text-[10px] font-mono-code font-bold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300';
+                }
+            });
+
+            // Kanal Sayısı Butonları
+            const channelBtns = document.querySelectorAll('.btn-channel');
+            channelBtns.forEach(btn => {
+                btn.addEventListener('click', () => {
+                    channelBtns.forEach(b => {
+                        b.className = 'btn-channel py-1.5 rounded-lg bg-white border border-slate-200 hover:border-sky-400 text-slate-600 font-medium';
+                    });
+                    btn.className = 'btn-channel py-1.5 rounded-lg bg-sky-600 border border-sky-600 text-white font-bold shadow-sm';
+                    config.channels = parseInt(btn.dataset.channels);
+                    updateLaserBeamsGeometry();
+                });
+            });
+
+            // Renk Modu
+            document.getElementById('select-color-mode').addEventListener('change', (e) => {
+                config.colorMode = e.target.value;
+            });
+
+            // 3D Gerçek Objeleri Göster / Gizle
+            document.getElementById('toggle-env-mesh').addEventListener('change', (e) => {
+                const isVis = e.target.checked;
+                interactiveObjects.forEach(obj => obj.visible = isVis);
+                const floor = scene.getObjectByName('ArenaZemin');
+                if (floor) floor.visible = isVis;
+            });
+
+            // Lazer Işınlarını Göster / Gizle
+            document.getElementById('toggle-laser-beams').addEventListener('change', (e) => {
+                laserRaysGroup.visible = e.target.checked;
+            });
+
+            // Nokta Bulutunu Sıfırla
+            document.getElementById('btn-clear-cloud').addEventListener('click', () => {
+                pointCount = 0;
+                pointWriteIdx = 0;
+                pointPositions.fill(0);
+                pointColors.fill(0);
+                pointCloudGeometry.setDrawRange(0, 0);
+                pointCloudGeometry.attributes.position.needsUpdate = true;
+                pointCloudGeometry.attributes.color.needsUpdate = true;
+                document.getElementById('hud-points').textContent = "0";
+            });
+
+            // Obje Ekleme Butonları
+            document.getElementById('btn-add-car').addEventListener('click', () => {
+                const angle = Math.random() * Math.PI * 2;
+                registerInteractiveObject(createCarMesh(), Math.cos(angle) * 6, Math.sin(angle) * 6, Math.random() * Math.PI * 2);
+            });
+
+            document.getElementById('btn-add-wall').addEventListener('click', () => {
+                const angle = Math.random() * Math.PI * 2;
+                registerInteractiveObject(createWallMesh(), Math.cos(angle) * 5, Math.sin(angle) * 5, Math.random() * Math.PI * 2);
+            });
+
+            document.getElementById('btn-add-ped').addEventListener('click', () => {
+                const angle = Math.random() * Math.PI * 2;
+                registerInteractiveObject(createPedestrianMesh(), Math.cos(angle) * 5, Math.sin(angle) * 5);
+            });
+
+            document.getElementById('btn-add-tree').addEventListener('click', () => {
+                const angle = Math.random() * Math.PI * 2;
+                registerInteractiveObject(createTreeMesh(), Math.cos(angle) * 7, Math.sin(angle) * 7);
+            });
+
+            document.getElementById('btn-delete-selected').addEventListener('click', deleteSelectedObject);
+
+            document.getElementById('btn-reset-env').addEventListener('click', () => {
+                while (interactiveObjects.length > 0) {
+                    const obj = interactiveObjects.pop();
+                    if (obj.userData.bboxHelper) scene.remove(obj.userData.bboxHelper);
+                    scene.remove(obj);
+                }
+                selectObject(null);
+                setupInitialSceneObjects();
+                document.getElementById('btn-clear-cloud').click();
+            });
+
+            // Kamera Görünümleri
+            document.getElementById('btn-reset-cam').addEventListener('click', () => setCameraView('orbit'));
+            document.getElementById('cam-orbit').addEventListener('click', () => setCameraView('orbit'));
+            document.getElementById('cam-top').addEventListener('click', () => setCameraView('top'));
+            document.getElementById('cam-pov').addEventListener('click', () => setCameraView('pov'));
+
+            // Bilgi Modal'ı
+            const modal = document.getElementById('modal-info');
+            document.getElementById('btn-open-edu').addEventListener('click', () => {
+                modal.classList.remove('hidden');
+                setTimeout(() => modal.classList.remove('opacity-0'), 10);
+            });
+            document.getElementById('btn-close-modal').addEventListener('click', () => {
+                modal.classList.add('opacity-0');
+                setTimeout(() => modal.classList.add('hidden'), 300);
+            });
+        }
+
+        function setCameraView(view) {
+            orbitControls.reset();
+            const btns = [document.getElementById('cam-orbit'), document.getElementById('cam-top'), document.getElementById('cam-pov')];
+            btns.forEach(b => b.className = 'py-1 text-[11px] bg-white border border-slate-200 hover:border-sky-400 text-slate-700 font-medium rounded-lg');
+
+            if (view === 'orbit') {
+                camera.position.set(0, 9.5, 16);
+                orbitControls.target.set(0, 1.2, 0);
+                document.getElementById('cam-orbit').className = 'py-1 text-[11px] bg-sky-600 text-white font-bold rounded-lg shadow-sm';
+            } else if (view === 'top') {
+                camera.position.set(0, 26, 0.01);
+                orbitControls.target.set(0, 0, 0);
+                document.getElementById('cam-top').className = 'py-1 text-[11px] bg-sky-600 text-white font-bold rounded-lg shadow-sm';
+            } else if (view === 'pov') {
+                camera.position.set(0, 1.6, 0.6);
+                orbitControls.target.set(0, 1.4, 12);
+                document.getElementById('cam-pov').className = 'py-1 text-[11px] bg-sky-600 text-white font-bold rounded-lg shadow-sm';
+            }
+            orbitControls.update();
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+        window.addEventListener('resize', onWindowResize, false);
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const delta = clock.getDelta();
+            const currentTime = clock.getElapsedTime();
+
+            // 1. Yaşlanan noktaları solup temizle (TTL)
+            pruneExpiredPoints(currentTime);
+
+            // 2. Kusursuz örtülemeli tarama yap (İlk çarptığı cisimde durur)
+            performLidarScan(delta, currentTime);
+
+            orbitControls.update();
+            renderer.render(scene, camera);
+        }
+
+        window.onload = function () {
+            initScene();
+            initUIEvents();
+            animate();
+        };
+    </script>
+</body>
+</html>
